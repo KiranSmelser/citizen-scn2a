@@ -1,0 +1,3 @@
+"period_pair","feature","coefficient","abs_coef","norm_coef","rank"
+"3yr_vs_5yr","med_LCM",0.449700962609554,0.449700962609554,1,1
+"3yr_vs_5yr","med_CBD",0.449579519453764,0.449579519453764,0.999729946862721,2

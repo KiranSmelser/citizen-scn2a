@@ -1,0 +1,27 @@
+score,denver_skill,domain_milestone
+1,grasping_objects,Ability to grasp
+2,reaching,Ability to reach
+3,thumb_finger,Ability to use pincer grasp
+3,thumb_finger,Ability to use tripod grasp
+4,build_blocks,Ability to transfer objects
+5,draw_circle,Ability to write
+1,head_control,Ability to control head posture
+2,roll_over,Ability to roll (back-to-front)
+2,roll_over,Ability to roll (front-to-back)
+2,roll_over,Ability to roll
+3,sitting,Ability to sit unsupported
+4,standing_supported,Ability to stand
+5,walking,Ability to walk
+6,running,Ability to run
+1,vocalize,Ability to vocalize
+2,babble,Ability to babble
+3,word_combo,Ability to use at least one word
+4,speak_phrases,Ability to use short phrase
+5,speak_fluently,Ability to speak fluently
+1,follow_commands,Ability to follow commands
+2,name_colors,Ability to identify colors
+2,name_colors,Ablity to identify colors
+3,recognize_letters,Ability to recognize letters of the alphabet
+4,count_to_10,Ability to count up to 10
+5,read,Ability to read
+6,write,Ability to write
