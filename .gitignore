@@ -2,8 +2,4 @@
 .Rhistory
 .RData
 .Ruserdata
-R/OLD_code
-data/raw/Ciitizen_SCN8A_UArizona_2024.02.09.xlsx
-data/raw/Supplementary_Table - Study Data by Groups.csv
-data/raw/onset_ages.csv
-data/raw/onset_ages_clustering.csv
+data/raw/Citizen_SCN2A_UArizona_2025.07.xlsx
