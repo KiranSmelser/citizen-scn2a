@@ -10,16 +10,15 @@ library(forcats)
 source(file.path(".", "R", "config.R"))
 
 time_labels   <- c("3yr", "5yr", "8yr", "10yr")
-run_suffixes <- c("unknown_excluded", "lof_excluded")
+run_suffix <- "all_patients"
 
-for (run_suffix in run_suffixes) {
-  cluster_files <- file.path(DATA_PROCESSED, run_suffix,
-                             paste0(time_labels, "_clusters.csv"))
+cluster_files <- file.path(DATA_PROCESSED, run_suffix,
+                           paste0(time_labels, "_clusters.csv"))
 
-  dir.create(file.path(RESULTS, "clusters", run_suffix),
-             showWarnings = FALSE, recursive = TRUE)
-  dir.create(file.path(FIGS,    "clusters", run_suffix),
-             showWarnings = FALSE, recursive = TRUE)
+dir.create(file.path(RESULTS, "clusters", run_suffix),
+           showWarnings = FALSE, recursive = TRUE)
+dir.create(file.path(FIGS,    "clusters", run_suffix),
+           showWarnings = FALSE, recursive = TRUE)
 
 compute_feature_summary <- function(df) {
   df %>%
@@ -109,5 +108,4 @@ for (i in seq_along(cluster_files)) {
             file.path(RESULTS, "clusters", run_suffix,
                       paste0(time_labels[i], "_cluster_summary.csv")),
             row.names = FALSE)
-}
 }

@@ -12,8 +12,8 @@ source(file.path(".", "R", "data_import_functions.R"))
 source(file.path(".", "R", "cleaning_utilities.R"))
 source(file.path(".", "R", "cluster", "functions", "cleaning_functions.R"))
 
-# Multi‑run wrapper
-produce_clusters <- function(cutoff_days, label, exclude_vec, run_suffix) {
+# Single-run wrapper
+produce_clusters <- function(cutoff_days, label, run_suffix = "all_patients") {
   # Make the chosen age cut‑off visible to all downstream filters
   assign("AGE_CUTOFF_DAYS", cutoff_days, envir = .GlobalEnv)
 
@@ -23,23 +23,6 @@ produce_clusters <- function(cutoff_days, label, exclude_vec, run_suffix) {
              showWarnings = FALSE)
 
 classifier <- read_classifier()
-
-other_variants <- c("p.Ala1350Val", "p.Ala1809Glu", "p.Ala205Glu", "p.Arg1305Thr",
-                    "p.Arg45GIn", "p.Arg850*", "p.Asn1466Ser", "p.Asn1759His",
-                    "p.Asp1465Asn", "p.Asp1720Thrfs*4", "p.Asp1846Glu",
-                    "p.Gln1470Arg", "p.Gln1501Lys", "p.Gln417Pro", "p.Glu1381Lys",
-                    "p.Glu1483Lys", "p.Glu1607Lys", "p.Glu587*", "p.Glu593Asp",
-                    "p.Gly1050Ser", "p.Gly964Arg", "p.Ile1327Val", "p.Ile1479Val",
-                    "p.Ile1594Leu", "p.Ile231Thr", "p.Ile240Leu", "p.Ile240Val",
-                    "p.Ile868Thr", "p.Leu1320Phe", "p.Leu1332Arg", "p.Leu1628Trp",
-                    "p.Leu1630Pro", "p.Leu1766Arg", "p.Leu257Val", "p.Leu267Ser",
-                    "p.Leu840Phe", "p.Leu848Trp", "p.Leu933Phe", "p.Leu977Pro",
-                    "p.Met139Ile", "p.Met1760Ile", "p.Met367Val", "p.Phe260Ser",
-                    "p.Pro1939Leu", "p.Ser132Pro", "p.Ser217Pro", "p.Ser979Phe",
-                    "p.Thr166Ile", "p.Thr1852Ile", "p.Thr1921Ala", "p.Val1315Ala",
-                    "p.Val1592Leu", "p.Val1757Ile", "p.Val211Gly", "p.Val403Met",
-                    "p.Val409Leu", "p.Val410Leu", "p.Val842Glu", "p.Val881Ala",
-                    "unknown")
 
 
 # Demographic and variant features
@@ -52,7 +35,7 @@ demographics <- read_excel(PATH_CITIZEN_DATA, sheet = "demographics") %>%
   select(patient_uuid, sex)   
 
 genetics <- read_excel(PATH_CITIZEN_DATA, sheet = "genetic_findings") %>%
-  filter(gene == "SCN8A") %>%
+  filter(gene == "SCN2A") %>%
   select(patient_uuid, variant_protein) %>%
   mutate(variant_protein = ifelse(is.na(variant_protein) | variant_protein == "", "unknown", variant_protein)) %>%
   distinct(patient_uuid, .keep_all = TRUE)
@@ -68,15 +51,6 @@ cluster_data_encoded <- model.matrix(~ sex + variant_protein - 1, data = cluster
   as.data.frame() %>%
   select(-sexfemale) %>%
   mutate(patient_uuid = cluster_data$patient_uuid)
-
-# Collapse other_variants into one feature
-other_variant_cols <- names(cluster_data_encoded)[
-  names(cluster_data_encoded) %in% paste0("variant_protein", make.names(other_variants))
-]
-cluster_data_encoded$variant_protein_other <- ifelse(
-  rowSums(cluster_data_encoded[, other_variant_cols, drop = FALSE]) > 0, 1, 0)
-cluster_data_encoded <- cluster_data_encoded %>%
-  select(-dplyr::all_of(other_variant_cols))
 
 # Construct seizure type features
 df_sz <- read_seizure_history() %>%
@@ -238,9 +212,14 @@ dev_data_encoded <- model.matrix(~ domain_milestone - 1, data = df_dev) %>%
 #   rename_with(~ paste0("med_", sub("^medication", "", .x)), -patient_uuid)
 
 # Construct Age of Onset feature
-df_onset <- read.csv(PATH_CLUSTER_ONSETS) %>%
-  rename(age_onset_m = onset_age)
+df_onset <- read_seizure_history() %>%
+  filter(!is.na(seizure_history_age_days)) %>%
+  group_by(patient_uuid) %>%
+  summarise(age_onset_m = min(seizure_history_age_days, na.rm = TRUE) / 30,
+            .groups = "drop")
 
+# Construct biophysics features (Neonatal + Adult)
+#biophys_features <- read_biophysics_data()
 
 # Combine all encoded features
 cluster_data_final <- cluster_data_encoded %>%
@@ -253,10 +232,6 @@ cluster_data_final <- cluster_data_encoded %>%
   mutate(across(where(is.numeric), ~ replace_na(., 0))) %>%
   left_join(df_onset, by = "patient_uuid")
 
-# Exclude patients according to the current run
-cluster_data_final <- cluster_data_final %>%
-  filter(!patient_uuid %in% exclude_vec)
-
 # Exclude specified diagnosis and hospitalization features
 cluster_data_final <- cluster_data_final %>%
   select(-diag_neuro, -diag_respiratory, -diag_behavioral,
@@ -268,6 +243,10 @@ cluster_data_final <- cluster_data_final %>%
 # Exclude patients w/ more than 25 NA values
 cluster_data_final <- cluster_data_final %>%
   filter(rowSums(is.na(.)) <= 25)
+
+# Join biophysics features after non-biophysics NA filtering
+# cluster_data_final <- cluster_data_final %>%
+#   left_join(biophys_features, by = c("patient_uuid" = "Patient"))
 
 # Preprocessing
 
@@ -284,6 +263,20 @@ cluster_data_pre <- cluster_data_pre %>%
   ) %>%
   select(-onset_missing)
 
+# Create missingness indicators and median-impute biophysics z-score features
+bio_cols <- names(cluster_data_pre)[grepl("^bio_", names(cluster_data_pre))]
+for (col_name in bio_cols) {
+  missing_col <- paste0(col_name, "_missing")
+  cluster_data_pre[[missing_col]] <- as.integer(is.na(cluster_data_pre[[col_name]]))
+
+  median_value <- median(cluster_data_pre[[col_name]], na.rm = TRUE)
+  if (is.na(median_value)) {
+    median_value <- 0
+  }
+
+  cluster_data_pre[[col_name]][is.na(cluster_data_pre[[col_name]])] <- median_value
+}
+
 # Preserve an un‑scaled version for downstream feature summaries
 cluster_data_pre_unscaled <- cluster_data_pre
 
@@ -295,37 +288,6 @@ cluster_data_pre$age_onset_m <- scale(cluster_data_pre$age_onset_m)
 # Fit model and select optimal number of clusters by BIC
 mclust_model <- Mclust(cluster_data_pre)
 cat("mclust selected", mclust_model$G, "clusters\n")
-
-
-  # Map cluster assignments back to patient IDs
-  cluster_assignments <- data.frame(
-    patient_uuid = cluster_data_final$patient_uuid,
-    cluster      = mclust_model$classification
-  )
-
-  # Manual relabels for specific exclusion scenarios and time periods
-  # if (run_suffix == "unknown_excluded" && label == "5yr") {
-  #   cluster_assignments$cluster <- recode(cluster_assignments$cluster,
-  #                                         `1` = 3, `2` = 4, `3` = 1, `4` = 2)
-  # }
-  # if (run_suffix == "unknown_excluded" && label == "8yr") {
-  #   cluster_assignments$cluster <- recode(cluster_assignments$cluster,
-  #                                         `1` = 2, `2` = 1)
-  # }
-  # if (run_suffix == "lof_excluded" && label == "3yr") {
-  #   cluster_assignments$cluster <- recode(cluster_assignments$cluster,
-  #                                         `1` = 3, `2` = 1, `3` = 2)
-  # }
-  # if (run_suffix == "lof_excluded" && label == "8yr") {
-  #   cluster_assignments$cluster <- recode(cluster_assignments$cluster,
-  #                                         `2` = 3, `3` = 2)
-  # }
-  # if (run_suffix == "lof_excluded" && label == "10yr") {
-  #   cluster_assignments$cluster <- recode(cluster_assignments$cluster,
-  #                                         `1` = 3, `3` = 1)
-  # }
-  # # Override model classifications so downstream uses recoded clusters
-  # mclust_model$classification <- cluster_assignments$cluster
 
 cluster_feature_data <- cluster_data_pre_unscaled %>%
   mutate(
@@ -363,14 +325,7 @@ ggsave(filename = file.path(FIGS, "clusters", run_suffix, paste0("clusters_", la
 
 # Execute clustering runs
 time_labels <- c("3yr", "5yr", "8yr", "10yr")            
-run_types <- list(
-  list(name = "unknown_excluded", exclude_vec = UNKNOWN),
-  list(name = "lof_excluded",     exclude_vec = LOF)
-)
 
-for (rt in run_types) {
-  for (i in seq_along(CLUSTER_CUTOFFS)) {
-    produce_clusters(CLUSTER_CUTOFFS[i], time_labels[i],
-                     rt$exclude_vec, rt$name)
-  }
+for (i in seq_along(CLUSTER_CUTOFFS)) {
+  produce_clusters(CLUSTER_CUTOFFS[i], time_labels[i], "all_patients")
 }

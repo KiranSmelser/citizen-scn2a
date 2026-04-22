@@ -2,74 +2,7 @@
 # Functions for plotting
 
 library(ggplot2)
-library(ggh4x)
 library(dplyr)
-library(tidyr)
-
-# Constants
-HEATMAP_LOW_COLOR  <- "#083681"
-HEATMAP_MID_COLOR  <- "#F7F7F7"
-HEATMAP_HIGH_COLOR <- "#C80813FF"
-
-# Helper function to create heatmap color scale
-heatmap_scale <- function(limits = NULL) {
-  scale_fill_gradient2(
-    low = HEATMAP_LOW_COLOR,
-    mid = HEATMAP_MID_COLOR,
-    high = HEATMAP_HIGH_COLOR,
-    midpoint = 0,
-    na.value = HEATMAP_MID_COLOR,
-    limits = limits
-  )
-}
-
-# Create combined heatmap
-create_combined_heatmap_modified <- function(data, limits = NULL) {
-  data_long <- data %>%
-    pivot_longer(
-      cols = c(diff_on_vs_before, diff_on_vs_after),
-      names_to = "comparison",
-      values_to = "diff_value"
-    ) %>%
-    mutate(
-      comparison = recode(
-        comparison,
-        diff_on_vs_before = "Before",
-        diff_on_vs_after  = "After"
-      ),
-      comparison = factor(comparison, levels = c("Before", "After"))
-    )
-  
-  # Build combined x-axis
-  data_long <- data_long %>%
-    mutate(x_axis = paste(comparison, type, sep = "|"))
-  
-  # Define factor levels
-  seizure_types <- unique(data_long$type)
-  x_levels <- unlist(lapply(seizure_types, function(t) {
-    c(paste("Before", t, sep = "|"), paste("After", t, sep = "|"))
-  }))
-  data_long$x_axis <- factor(data_long$x_axis, levels = x_levels)
-  
-  # Positions for vertical divider lines
-  n_groups <- length(seizure_types)
-  vline_positions <- if (n_groups > 1) sapply(1:(n_groups - 1), function(i) i * 2 + 0.5) else NULL
-  
-  ggplot(data_long, aes(x = x_axis, y = medication, fill = diff_value)) +
-    geom_tile(color = "white") +
-    geom_text(aes(label = round(diff_value, 2)), size = 3, color = "black", na.rm = TRUE) +
-    geom_vline(xintercept = vline_positions, linetype = "solid", color = "black", size = 1) +
-    heatmap_scale(limits) +
-    theme_classic() +
-    labs(
-      title = "Seizure Index Comparisons",
-      x = "Comparison and Seizure Type",
-      y = "Medication",
-      fill = "Change in Seizure Index"
-    ) +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    scale_x_discrete(guide = ggh4x::guide_axis_nested(delim = "|"))
-}
 
 # Creates patient charts
 plot_patient_chart <- function(patient_data) {
@@ -77,26 +10,16 @@ plot_patient_chart <- function(patient_data) {
   patient_data$pt_data_type <- patient_data$pt_data_type %>%
     mutate(type = recode(type, !!!ABBREVIATIONS_SEIZURES))
   
-  # Abbreviate names in heatmap summary
-  patient_data$pt_data <- patient_data$pt_data %>%
-    mutate(
-      type = recode(type, !!!ABBREVIATIONS_SEIZURES),
-      base_med = sub(" \\d+$", "", medication),
-      id = str_extract(medication, "\\d+$"),
-      medication = ifelse(
-        !is.na(id),
-        paste0(recode(base_med, !!!ABBREVIATIONS_MEDS), " ", id),
-        recode(base_med, !!!ABBREVIATIONS_MEDS)
-      )
-    ) %>%
-    select(-base_med, -id)
-  
   # Abbreviate med names on timeline plot
   patient_data$pt_data_duration <- patient_data$pt_data_duration %>%
     mutate(medication_base = recode(medication_base, !!!ABBREVIATIONS_MEDS))
   
   # Abbreviate med order vector for y-axis
   patient_data$med_order <- recode(patient_data$med_order, !!!ABBREVIATIONS_MEDS)
+
+  # Keep adverse effects aligned to medication rows after abbreviation
+  patient_data$pt_data_adverse <- patient_data$pt_data_adverse %>%
+    mutate(medication_base = recode(medication_base, !!!ABBREVIATIONS_MEDS))
   
   # Classify EEG events (normal vs. abnormal)
   classifier_eeg <- read_classifier()
@@ -105,71 +28,79 @@ plot_patient_chart <- function(patient_data) {
   # Mark all hypsarrhythmia as abnormal
   patient_data$pt_hyps <- patient_data$pt_hyps %>%
     mutate(eeg_status = "Abnormal")
-  # Line plot for seizure index over time
-  p_line <- ggplot(patient_data$pt_data_type, aes(x = age_months, y = index, color = type)) +
-    geom_point(size = 2, alpha = 0.8) +
-    geom_line(linetype = "dashed", alpha = 0.8) +
-    facet_grid(type ~ .) +
-    theme_light() +
-    labs(x = "Age (months)", y = "Seizure Index", color = "Seizure Type") +
-    guides(color = "none")
+
+  ae_levels <- sort(unique(patient_data$pt_data_adverse$adverse_effect))
+  ae_shape_pool <- c(15, 16, 17, 18, 0, 1, 2, 3, 4, 5, 6, 7, 8)
+  ae_shape_values <- setNames(
+    rep(ae_shape_pool, length.out = length(ae_levels)),
+    ae_levels
+  )
+
+  has_ispm <- nrow(patient_data$pt_spasm_periods) > 0
+  has_se <- nrow(patient_data$pt_data_status) > 0
+
+  y_levels <- unique(c(
+    "APPT",
+    if (has_se) "SE",
+    "EEG",
+    if (has_ispm) "ISPM",
+    rev(unique(patient_data$pt_data_type$type)),
+    rev(patient_data$med_order)
+  ))
+  y_index <- setNames(seq_along(y_levels), y_levels)
+  eeg_row <- unname(y_index[["EEG"]])
+  ispm_row <- if (has_ispm) unname(y_index[["ISPM"]]) else NA_real_
+  se_row <- if (has_se) unname(y_index[["SE"]]) else NA_real_
+  appt_row <- unname(y_index[["APPT"]])
+
+  pt_data_duration_plot <- patient_data$pt_data_duration %>%
+    mutate(y_row = unname(y_index[medication_base]))
+  pt_data_type_plot <- patient_data$pt_data_type %>%
+    mutate(y_row = unname(y_index[type]))
+  pt_spasm_periods_plot <- patient_data$pt_spasm_periods
+  pt_eeg_plot <- patient_data$pt_eeg
+  pt_hyps_plot <- patient_data$pt_hyps
+  pt_data_status_plot <- patient_data$pt_data_status
+  appointment_data_plot <- patient_data$appointment_data
+  pt_data_adverse_plot <- patient_data$pt_data_adverse %>%
+    mutate(y_row = unname(y_index[medication_base]))
   
   # Timeline plot
   p_timeline <- ggplot() +
     geom_segment(
-      data = patient_data$pt_data_duration,
+      data = pt_data_duration_plot,
       aes(x = start_med_age_months, xend = first_3_months_end,
-          y = medication_base, yend = medication_base),
-      size = 2, color = "#8A9197FF"
+          y = y_row, yend = y_row),
+      linewidth = 2, color = "#8A9197FF"
     ) +
     geom_segment(
-      data = patient_data$pt_data_duration,
+      data = pt_data_duration_plot,
       aes(x = first_3_months_end, xend = end_med_age_months,
-          y = medication_base, yend = medication_base),
-      size = 2, color = "#709AE1FF"
+          y = y_row, yend = y_row),
+      linewidth = 2, color = "#709AE1FF"
     ) +
     geom_point(
-      data = patient_data$pt_data_type,
-      aes(x = age_months, y = type),
+      data = pt_data_type_plot,
+      aes(x = age_months, y = y_row),
       color = "#C80813FF", size = patient_data$pt_data_type$index + 1, alpha = 0.6
     ) +
     geom_segment(
-      data = patient_data$pt_spasm_periods,
-      aes(x = spasm_start_age, xend = spasm_end_age, y = "ISPM", yend = "ISPM"),
-      size = 2, color = "#C80813FF"
+      data = pt_eeg_plot,
+      aes(x = age_months, xend = age_months, y = eeg_row, yend = eeg_row + 0.24, color = eeg_status),
+      linewidth = 1.1, alpha = 0.95, lineend = "round"
     ) +
-    geom_point(
-      data = patient_data$pt_spasm_periods %>% filter(is_single_report),
-      aes(x = spasm_start_age, y = "ISPM"),
-      size = 2, color = "#C80813FF", shape = 15
-    ) +
-    geom_point(
-      data = patient_data$pt_eeg,
-      aes(x = age_months, y = "EEG", color = eeg_status),
-      size = 3, shape = 124, position = position_nudge(y = 0.14)
-    ) +
-    geom_point(
-      data = patient_data$pt_hyps,
-      aes(x = age_months, y = "EEG", color = eeg_status),
-      size = 3, shape = 124, position = position_nudge(y = -0.16)
-    ) +
-    geom_point(
-      data = patient_data$pt_data_adverse,
-      aes(x = age_months, y = "AE"),
-      color = "#FD7446FF", size = 2, shape = 15, alpha = 0.8
-    ) +
-    geom_point(
-      data = patient_data$pt_data_status,
-      aes(x = age_months, y = "SE"),
-      color = "#FED439FF", size = 5, shape = 18, alpha = 0.9
+    geom_segment(
+      data = pt_hyps_plot,
+      aes(x = age_months, xend = age_months, y = eeg_row, yend = eeg_row - 0.24, color = eeg_status),
+      linewidth = 1.4, alpha = 1, lineend = "round"
     ) +
     scale_color_manual(values = c(
       "Normal"   = "dodgerblue1",
       "Abnormal" = "tomato"
     ), guide = "none") +
     geom_point(
-      data = patient_data$appointment_data,
-      aes(x = appointment_age_months, y = "APPT"),
+      data = appointment_data_plot,
+      aes(x = appointment_age_months, y = appt_row),
       color = "#1A9993FF", size = 3, shape = 17, alpha = 0.6
     ) +
     theme_linedraw() +
@@ -178,22 +109,49 @@ plot_patient_chart <- function(patient_data) {
       x = "Age (months)",
       y = ""
     ) +
-    scale_y_discrete(limits = c(
-      "APPT", "SE",
-      "EEG", "ISPM",
-      rev(unique(patient_data$pt_data_type$type)),
-      "AE",
-      rev(patient_data$med_order)
-    ))
-  
-  # Compute legend limits for heatmap
-  legend_limits <- max(abs(patient_data$pt_data$diff_on_vs_after),
-                       abs(patient_data$pt_data$diff_on_vs_before), na.rm = TRUE) * c(-1, 1)
-  
-  combined_heatmap <- create_combined_heatmap_modified(patient_data$pt_data, limits = legend_limits)
-  
-  combined_plot <- (p_line | combined_heatmap) /
-    p_timeline + patchwork::plot_layout(heights = c(1, 1))
-  
-  return(combined_plot)
+    scale_y_continuous(
+      breaks = seq_along(y_levels),
+      labels = y_levels,
+      minor_breaks = NULL
+    ) +
+    theme(panel.grid.minor.y = element_blank())
+
+  if (has_ispm) {
+    p_timeline <- p_timeline +
+      geom_segment(
+        data = pt_spasm_periods_plot,
+        aes(x = spasm_start_age, xend = spasm_end_age, y = ispm_row, yend = ispm_row),
+        linewidth = 2, color = "#C80813FF"
+      ) +
+      geom_point(
+        data = pt_spasm_periods_plot %>% filter(is_single_report),
+        aes(x = spasm_start_age, y = ispm_row),
+        size = 2, color = "#C80813FF", shape = 15
+      )
+  }
+
+  if (has_se) {
+    p_timeline <- p_timeline +
+      geom_point(
+        data = pt_data_status_plot,
+        aes(x = age_months, y = se_row),
+        color = "#FED439FF", size = 5, shape = 18, alpha = 0.9
+      )
+  }
+
+  if (nrow(pt_data_adverse_plot) > 0) {
+    p_timeline <- p_timeline +
+      geom_point(
+        data = pt_data_adverse_plot,
+        aes(x = age_months, y = y_row, shape = adverse_effect),
+        color = "#FD7446FF", size = 2.5, alpha = 0.85,
+        position = position_jitter(width = 0.15, height = 0.08, seed = 1)
+      ) +
+      scale_shape_manual(
+        values = ae_shape_values,
+        name = "Adverse effects"
+      )
+  }
+
+  return(p_timeline)
 }

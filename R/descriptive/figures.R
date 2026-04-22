@@ -38,7 +38,7 @@ normalized_df <- left_join(patients_by_type, patients_total, by = "age_year") %>
   mutate(prop = n / total)
 
 # Define and adjust factor levels for seizure type
-seizure_levels <- c("Tonic-clonic", "Focal", "Tonic", "Myoclonic", "Absence", "Spasms")
+seizure_levels <- c("Tonic", "Tonic-clonic", "Focal", "Myoclonic", "Absence", "Spasms")
 normalized_df$type <- factor(normalized_df$type, levels = seizure_levels)
 
 # Generate plot
@@ -189,9 +189,8 @@ ggsave(
 # Figure 12
 # ---------
 # Appointment-interval distribution (1st vs. 2nd half)
-apt_clean  <- clean_appointment_data()
-
-p_appt_int <- plot_appointment_interval_boxplot(apt_clean$distance_df)
+intervals_all_patients <- clean_appointment_intervals_all_patients()
+p_appt_int <- plot_appointment_interval_boxplot(intervals_all_patients)
 
 ggsave(
   filename = file.path("output", "figures", "fig_12.jpeg"),
@@ -204,7 +203,8 @@ ggsave(
 # Figure 13
 # ---------
 # Appointment counts per patient (1st vs. 2nd half)
-p_appt_cnt <- plot_appointment_count_boxplot(apt_clean$counts_df)
+counts_all_patients <- clean_appointment_counts_all_patients()
+p_appt_cnt <- plot_appointment_count_boxplot(counts_all_patients)
 
 ggsave(
   filename = file.path("output", "figures", "fig_13.jpeg"),

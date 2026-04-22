@@ -13,7 +13,7 @@ time_labels  <- c("3yr", "5yr", "8yr", "10yr")
 age_pairs    <- list(c("3yr", "5yr"),
                      c("5yr", "8yr"),
                      c("8yr", "10yr"))
-run_suffixes <- c("unknown_excluded", "lof_excluded")
+run_suffix <- "all_patients"
 
 # Helper for elastic‑net model
 run_glmnet <- function(x, y, alpha = 0.5, nfolds = 10) {
@@ -28,18 +28,16 @@ run_glmnet <- function(x, y, alpha = 0.5, nfolds = 10) {
 }
 
 # Main loop
-for (run_suffix in run_suffixes) {
-  
-  cluster_paths <- setNames(
-    file.path(DATA_PROCESSED, run_suffix, paste0(time_labels, "_clusters.csv")),
-    time_labels
-  )
-  
-  out_dir <- file.path(RESULTS, "clusters", run_suffix, "feature_importance")
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # Iterate over adjacent age‑pairs
-  walk(age_pairs, function(tp) {
+cluster_paths <- setNames(
+  file.path(DATA_PROCESSED, run_suffix, paste0(time_labels, "_clusters.csv")),
+  time_labels
+)
+
+out_dir <- file.path(RESULTS, "clusters", run_suffix, "feature_importance")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Iterate over adjacent age‑pairs
+walk(age_pairs, function(tp) {
     
     t1 <- tp[1]
     t2 <- tp[2]
@@ -136,5 +134,4 @@ for (run_suffix in run_suffixes) {
     
     message("Completed ", pair_label, " (", run_suffix, ") with ",
             nrow(coef_df), " features")
-  })
-}
+})

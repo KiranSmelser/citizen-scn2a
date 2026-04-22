@@ -1,0 +1,9 @@
+"period_pair","feature","coefficient","abs_coef","norm_coef","rank"
+"8yr_vs_10yr","bio_ramp_current_neonatal",-2.36159612267567,2.36159612267567,1,1
+"8yr_vs_10yr","bio_use_dependent_run_down_neonatal",2.21514019469832,2.21514019469832,0.937984346022969,2
+"8yr_vs_10yr","bio_inactivation_kinetics_neonatal",-1.68592599203448,1.68592599203448,0.713892598250174,3
+"8yr_vs_10yr","bio_persistent_current_neonatal",-1.27319515816728,1.27319515816728,0.539124851172588,4
+"8yr_vs_10yr","bio_voltage_dependence_of_inactivation_neonatal",1.17441018843077,1.17441018843077,0.497295103576037,5
+"8yr_vs_10yr","bio_voltage_dependence_of_activation_neonatal",1.13604897229996,1.13604897229996,0.481051337013894,6
+"8yr_vs_10yr","bio_recovery_from_inactivation_tau_neonatal",-1.00476813068596,1.00476813068596,0.425461458476466,7
+"8yr_vs_10yr","bio_window_current_neonatal",-0.406767232467789,0.406767232467789,0.172242505211655,8

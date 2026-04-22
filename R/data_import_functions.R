@@ -4,11 +4,6 @@
 library(readr)
 library(readxl)
 
-read_supp_data <- function() {
-  data <- read_csv(PATH_SUPP_DATA, show_col_types = FALSE)
-  data <- data[,-1]
-  data
-}
 
 read_citizen_data <- function() {
   read_csv(PATH_CITIZEN_DATA, show_col_types = FALSE)
@@ -54,8 +49,53 @@ read_growth <- function() {
   read_excel(PATH_CITIZEN_DATA, sheet = "growth_parameters")
 }
 
-read_overlap_patients <- function() {
-  read_excel(PATH_OVERLAP_PATIENTS)
+read_biophysics_data <- function() {
+  if (!file.exists(PATH_BIOPHYSICS_DATA)) {
+    stop("Biophysics data file not found at: ", PATH_BIOPHYSICS_DATA)
+  }
+
+  biophys_properties <- c(
+    "Current Density",
+    "Voltage Dependence of Activation",
+    "Voltage Dependence of Inactivation",
+    "Recovery from Inactivation tau",
+    "Use-dependent Run-down",
+    "Inactivation Kinetics",
+    "Ramp Current",
+    "Persistent Current",
+    "Window Current"
+  )
+
+  metric_names <- tolower(gsub("[^A-Za-z0-9]+", "_", biophys_properties))
+  metric_names <- gsub("_+", "_", metric_names)
+  metric_names <- gsub("^_|_$", "", metric_names)
+
+  read_channel_sheet <- function(sheet_name, suffix) {
+    df <- read_excel(PATH_BIOPHYSICS_DATA, sheet = sheet_name) %>%
+      dplyr::select(Patient, dplyr::all_of(biophys_properties)) %>%
+      dplyr::mutate(dplyr::across(dplyr::all_of(biophys_properties), ~ {
+        x <- trimws(as.character(.x))
+        x[x == "" | toupper(x) == "ND"] <- NA_character_
+        suppressWarnings(as.numeric(x))
+      })) %>%
+      dplyr::group_by(Patient) %>%
+      dplyr::summarise(
+        dplyr::across(
+          dplyr::all_of(biophys_properties),
+          ~ if (all(is.na(.x))) NA_real_ else mean(.x, na.rm = TRUE)
+        ),
+        .groups = "drop"
+      )
+
+    value_col_idx <- match(biophys_properties, names(df))
+    names(df)[value_col_idx] <- paste0("bio_", metric_names, "_", suffix)
+    df
+  }
+
+  neonatal <- read_channel_sheet("SCN2A Neonatal", "neonatal")
+  adult <- read_channel_sheet("SCN2A Adult", "adult")
+
+  dplyr::full_join(neonatal, adult, by = "Patient")
 }
 
 load_who_lms <- function(parameter) {

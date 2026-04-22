@@ -119,16 +119,53 @@ calculate_hospitalization_frequencies <- function(hosp_data) {
 
 # Clean diagnoses data
 clean_diagnoses_data <- function() {
-  diagnoses <- read_excel(PATH_CITIZEN_DATA, sheet = "clinical_diagnosis_features")
-  diagnoses <- subset(diagnoses, select = c(1:2, 9))
-  
-  PATH_DIAGNOSIS_CLASSIFIER <- file.path(DATA_CLASSIFIERS, "Grouping diagnoses.xlsx")
-  diagnosis_classifier <- read_excel(PATH_DIAGNOSIS_CLASSIFIER)
-  diagnosis_classifier <- subset(diagnosis_classifier, select = -c(5))
-  
-  diagnoses <- left_join(diagnoses, diagnosis_classifier, by = c("diagnosis" = "Clinical Diagnoses"))
-  diagnoses <- unique(na.omit(subset(diagnoses, select = c(1:2, 6))))
-  diagnoses <- diagnoses %>% filter(!System %in% c("Endocrine", "Excretory", "Integumentary"))
+  diagnoses <- read_excel(PATH_CITIZEN_DATA, sheet = "clinical_diagnosis_features") %>%
+    dplyr::transmute(
+      patient_uuid,
+      diagnosis = stringr::str_squish(as.character(diagnosis)),
+      diagnosis_key = stringr::str_to_lower(diagnosis)
+    ) %>%
+    dplyr::filter(!is.na(diagnosis), diagnosis != "")
+
+  classifier <- read_classifier()
+  diagnosis_cols <- names(classifier)[stringr::str_starts(names(classifier), "diagnosis_")]
+  if (length(diagnosis_cols) == 0) {
+    stop("No diagnosis_* columns found in PATH_CLASSIFIER.")
+  }
+
+  system_lookup <- c(
+    "diagnosis_behavioral" = "Behavioral",
+    "diagnosis_muscoloskeletal" = "Musculoskeletal",
+    "diagnosis_musculoskeletal" = "Musculoskeletal",
+    "diagnosis_gastro" = "Gastrointestinal",
+    "diagnosis_immune" = "Immunological",
+    "diagnosis_neuro" = "Neurological",
+    "diagnosis_sensory" = "Sensory",
+    "diagnosis_respiratory" = "Respiratory",
+    "diagnosis_cardio" = "Cardiovascular"
+  )
+
+  diagnosis_classifier <- classifier %>%
+    dplyr::select(dplyr::all_of(diagnosis_cols)) %>%
+    tidyr::pivot_longer(
+      cols = tidyselect::everything(),
+      names_to = "diagnosis_col",
+      values_to = "diagnosis"
+    ) %>%
+    dplyr::mutate(
+      diagnosis = stringr::str_squish(as.character(diagnosis)),
+      diagnosis_key = stringr::str_to_lower(diagnosis),
+      System = dplyr::recode(diagnosis_col, !!!system_lookup, .default = NA_character_)
+    ) %>%
+    dplyr::filter(!is.na(diagnosis), diagnosis != "", !is.na(System)) %>%
+    dplyr::select(diagnosis_key, System) %>%
+    dplyr::distinct()
+
+  diagnoses <- diagnoses %>%
+    dplyr::left_join(diagnosis_classifier, by = "diagnosis_key") %>%
+    dplyr::select(patient_uuid, diagnosis, System) %>%
+    dplyr::filter(!is.na(System)) %>%
+    dplyr::distinct()
   
   sys_pcts <- diagnoses %>% group_by(System) %>% summarise(
     sys_pct = n() / nrow(diagnoses) * 100,
@@ -159,7 +196,8 @@ clean_medication_data <- function() {
       medication = ifelse(grepl("ACTH", medication), "ACTH", medication),
       medication = recode(medication,
                           `Epidiolex` = "Epidiolex/CBD",
-                          `Cannabidiol` = "Epidiolex/CBD")
+                          `Cannabidiol` = "Epidiolex/CBD",
+                          `Cannabinol` = "Epidiolex/CBD")
     ) %>%
     filter(grepl(MEDS_TO_USE, medication))
   
@@ -232,8 +270,9 @@ merge_intervals <- function(intervals_df) {
 # Prepare top medications over age
 prepare_top_medications_over_age <- function(df_med_duration,
                                              top_n = 10,
-                                             desired_levels = c("OXC", "LCM", "CLB", "LTG", "CLZ",
-                                                                "LEV", "CBD", "PHT", "TPM", "PBT")) {
+                                             desired_levels = c("OXC", "LCM", "CLB", "CLZ",
+                                                                "LEV", "CBD", "TPM", "PBT",
+                                                                "VPA", "GBP")) {
   df_med_duration <- df_med_duration %>%
     mutate(medication_base = sub(" \\d+$", "", medication))
 
@@ -312,6 +351,20 @@ prepare_medication_category_durations <- function(df_med_duration,
     dplyr::filter(!is.na(medication) & medication != "") %>%
     dplyr::mutate(medication = stringr::str_trim(medication))
 
+  # Ensure normalized CBD label
+  cbd_category <- med_map %>%
+    dplyr::filter(medication %in% c("Epidiolex", "Cannabidiol", "Cannabinol")) %>%
+    dplyr::count(category, sort = TRUE) %>%
+    dplyr::slice_head(n = 1) %>%
+    dplyr::pull(category)
+
+  if (length(cbd_category) == 1 && !("Epidiolex/CBD" %in% med_map$medication)) {
+    med_map <- dplyr::bind_rows(
+      med_map,
+      tibble::tibble(category = cbd_category, medication = "Epidiolex/CBD")
+    )
+  }
+
   df_durations_cat <- df_med_duration %>%
     dplyr::mutate(
       medication_base = sub(" \\d+$", "", medication),
@@ -342,7 +395,8 @@ build_med_ae_fisher <- function() {
       medication = ifelse(grepl("ACTH", medication), "ACTH", medication),
       medication = dplyr::recode(medication,
                                  `Epidiolex`   = "Epidiolex/CBD",
-                                 `Cannabidiol` = "Epidiolex/CBD")
+                                 `Cannabidiol` = "Epidiolex/CBD",
+                                 `Cannabinol`  = "Epidiolex/CBD")
     ) %>%
     dplyr::filter(grepl(MEDS_TO_USE, medication)) %>%
     dplyr::transmute(patient_uuid, medication_base = medication) %>%
@@ -355,16 +409,19 @@ build_med_ae_fisher <- function() {
                        values_from = present,
                        values_fill = list(present = 0L))
 
-  # Restrict medications
-  allowed_abbr <- c("ZNS", "VPA", "VBG", "TPM", "RFM", "PRD", "PHT", "PER",
-                    "PBT", "OXC", "LTG", "LEV", "LCM", "GBP", "CLZ", "CLB",
-                    "CBD", "ACTH")
-  med_cols_all <- setdiff(colnames(med_wide), "patient_uuid")
-  if (length(med_cols_all) > 0) {
-    med_abbr_map <- dplyr::recode(med_cols_all, !!!ABBREVIATIONS_MEDS, .default = NA_character_)
-    keep_meds <- med_cols_all[med_abbr_map %in% allowed_abbr]
-    med_wide  <- med_wide %>% dplyr::select(patient_uuid, dplyr::all_of(keep_meds))
-  }
+  # Order meds by number of patients
+  med_levels <- df_med %>%
+    dplyr::distinct(patient_uuid, medication_base) %>%
+    dplyr::count(medication_base, sort = TRUE) %>%
+    dplyr::mutate(
+      medication = dplyr::recode(
+        medication_base,
+        !!!ABBREVIATIONS_MEDS,
+        .default = medication_base
+      )
+    ) %>%
+    dplyr::pull(medication) %>%
+    unique()
 
   # Filter adverse effects for Moderate/Severe only
   adverse_effects_raw <- read_adverse_effects()
@@ -462,10 +519,14 @@ build_med_ae_fisher <- function() {
     dplyr::ungroup()
 
   # Recode med names to abbreviations
-  combos$medication <- dplyr::recode(combos$medication_base, !!!ABBREVIATIONS_MEDS)
+  combos$medication <- dplyr::recode(
+    combos$medication_base,
+    !!!ABBREVIATIONS_MEDS,
+    .default = combos$medication_base
+  )
 
   # Order
-  combos$medication    <- factor(combos$medication, levels = allowed_abbr, ordered = TRUE)
+  combos$medication    <- factor(combos$medication, levels = med_levels, ordered = TRUE)
   combos$adverse_effect<- factor(combos$adverse_effect, levels = top_ae, ordered = TRUE)
 
   fisher_df <- combos %>%
@@ -608,4 +669,142 @@ clean_appointment_data <- function() {
     distance_df = distance_df,
     counts_df   = counts_df
   )
+}
+
+# Clean appointment interval data for Figure 12
+clean_appointment_intervals_all_patients <- function() {
+  cohort_ids <- readxl::read_excel(
+    PATH_CITIZEN_DATA,
+    sheet = "clinical_diagnosis"
+  ) %>%
+    select(patient_uuid) %>%
+    filter(!is.na(patient_uuid)) %>%
+    distinct()
+  
+  # Aggregate timestamps across all appointments
+  df_med_start <- read_medication_aggregate() %>%
+    select(patient_uuid,
+           appointment_age_days = medication_age_days_firstDate)
+  
+  df_med_end <- read_medication_aggregate() %>%
+    select(patient_uuid,
+           appointment_age_days = medication_age_days_lastDate)
+  
+  df_sz_apts <- read_seizure_history() %>%
+    select(patient_uuid,
+           appointment_age_days = seizure_history_age_days)
+  
+  df_diagnosis_apts <- readxl::read_excel(
+    PATH_CITIZEN_DATA,
+    sheet = "clinical_diagnosis"
+  ) %>%
+    select(patient_uuid,
+           appointment_age_days = clinical_diagnosis_age_days_firstDate)
+  
+  appointments <- bind_rows(
+    df_med_start,
+    df_med_end,
+    df_sz_apts,
+    df_diagnosis_apts
+  ) %>%
+    filter(!is.na(patient_uuid), !is.na(appointment_age_days)) %>%
+    semi_join(cohort_ids, by = "patient_uuid") %>%
+    distinct() %>%
+    arrange(patient_uuid, appointment_age_days)
+  
+  # Split each patient's observed timeline into first/second halves
+  censor_df <- appointments %>%
+    group_by(patient_uuid) %>%
+    summarise(
+      censor_age_days = max(appointment_age_days, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  distance_df <- appointments %>%
+    left_join(censor_df, by = "patient_uuid") %>%
+    mutate(
+      appointment_age_months = appointment_age_days / 30,
+      censor_age_months      = censor_age_days / 30
+    ) %>%
+    group_by(patient_uuid) %>%
+    arrange(appointment_age_months, .by_group = TRUE) %>%
+    mutate(
+      dist_months = appointment_age_months - lag(appointment_age_months),
+      half        = ifelse(appointment_age_months <= censor_age_months / 2,
+                           "First half", "Second half")
+    ) %>%
+    filter(!is.na(dist_months), dist_months <= 12) %>%
+    ungroup()
+  
+  return(distance_df)
+}
+
+# Clean appointment counts data for Figure 13
+clean_appointment_counts_all_patients <- function() {
+  cohort_ids <- readxl::read_excel(
+    PATH_CITIZEN_DATA,
+    sheet = "clinical_diagnosis"
+  ) %>%
+    select(patient_uuid) %>%
+    filter(!is.na(patient_uuid)) %>%
+    distinct()
+  
+  # Aggregate timestamps across all appointments
+  df_med_start <- read_medication_aggregate() %>%
+    select(patient_uuid,
+           appointment_age_days = medication_age_days_firstDate)
+  
+  df_med_end <- read_medication_aggregate() %>%
+    select(patient_uuid,
+           appointment_age_days = medication_age_days_lastDate)
+  
+  df_sz_apts <- read_seizure_history() %>%
+    select(patient_uuid,
+           appointment_age_days = seizure_history_age_days)
+  
+  df_diagnosis_apts <- readxl::read_excel(
+    PATH_CITIZEN_DATA,
+    sheet = "clinical_diagnosis"
+  ) %>%
+    select(patient_uuid,
+           appointment_age_days = clinical_diagnosis_age_days_firstDate)
+  
+  appointments <- bind_rows(
+    df_med_start,
+    df_med_end,
+    df_sz_apts,
+    df_diagnosis_apts
+  ) %>%
+    filter(!is.na(patient_uuid), !is.na(appointment_age_days)) %>%
+    distinct() %>%
+    arrange(patient_uuid, appointment_age_days)
+  
+  # Split each patient's observed timeline into first/second halves
+  censor_df <- appointments %>%
+    group_by(patient_uuid) %>%
+    summarise(
+      censor_age_days = max(appointment_age_days, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  counts_observed <- appointments %>%
+    left_join(censor_df, by = "patient_uuid") %>%
+    mutate(
+      half = ifelse(appointment_age_days <= censor_age_days / 2,
+                    "First half", "Second half")
+    ) %>%
+    group_by(patient_uuid, half) %>%
+    summarise(count = n(), .groups = "drop")
+  
+  all_halves <- expand.grid(
+    patient_uuid = cohort_ids$patient_uuid,
+    half = c("First half", "Second half"),
+    stringsAsFactors = FALSE
+  )
+  
+  counts_df <- all_halves %>%
+    left_join(counts_observed, by = c("patient_uuid", "half")) %>%
+    mutate(count = ifelse(is.na(count), 0L, as.integer(count)))
+  
+  return(counts_df)
 }

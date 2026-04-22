@@ -18,7 +18,7 @@ source(file.path(".", "R", "data_import_functions.R"))
 
 # Constants
 MED_COLORS <- RColorBrewer::brewer.pal(10, "Set3")
-SEIZURE_TYPE_COLORS <- c("#5698a3", "#ffde76", "#67771a", "#0076c0", "#e37c1d", "#7a5072")
+SEIZURE_TYPE_COLORS <- c("#67771a", "#5698a3", "#ffde76", "#0076c0", "#e37c1d", "#7a5072")
 
 HOSPITAL_LINE_COLORS <- c("Seizure" = "#a30234", 
                           "Status epilepticus" = "#7a5072", 
@@ -122,8 +122,8 @@ plot_hospitalization_lineplot <- function(hosp_data) {
 
 # Plot diagnoses by body system (Figure 3)
 plot_diagnoses_by_system <- function(sys_pcts, diagnosis_pcts, output_file) {
-  colors <- c("#a30234", "#e4b8b4", "#e37c1d", "#bacfec", "#ffde76", lighten("#00545f", 0.25),
-              "#0076c0", lighten("#67771a", 0.25), "#abb47d", "#a1c5fb", "#7a5072")
+  colors <- c("#a30234", "#e4b8b4", "#e37c1d", "#bacfec", "#ffde76", colorspace::lighten("#00545f", 0.25),
+              "#0076c0", colorspace::lighten("#67771a", 0.25), "#abb47d", "#a1c5fb", "#7a5072")
   unique_systems <- c("Musculoskeletal", "Gastrointestinal", "Behavioral", "Neurological", 
                       "Sensory", "Respiratory", "Cardiovascular", "Immunological")
   
@@ -166,12 +166,12 @@ plot_diagnoses_by_system <- function(sys_pcts, diagnosis_pcts, output_file) {
     if (system %in% c("Neurological", "Sensory", "Gastrointestinal")) {
       table <- ggtexttable(sys_dfs[[system]], rows = NULL, theme = ttheme(
         colnames.style = colnames_style(color = "black", fill = colors[i]),
-        tbody.style = tbody_style(color = "black", fill = lighten(colors[i], 0.5))
+        tbody.style = tbody_style(color = "black", fill = colorspace::lighten(colors[i], 0.5))
       ))
     } else {
       table <- ggtexttable(sys_dfs[[system]], rows = NULL, theme = ttheme(
         colnames.style = colnames_style(color = "white", fill = colors[i]),
-        tbody.style = tbody_style(color = "black", fill = lighten(colors[i], 0.5))
+        tbody.style = tbody_style(color = "black", fill = colorspace::lighten(colors[i], 0.5))
       ))
     }
     
@@ -404,7 +404,7 @@ plot_growth_delta <- function(df_growth,
     ggplot2::guides(linetype = ggplot2::guide_legend(override.aes = list(colour = "black"))) +
     ggplot2::theme_classic(base_size = 20) +
     ggplot2::theme(
-      legend.position      = c(0.075, 0.01),
+      legend.position      = c(0.05, 0.62),
       legend.justification = c(0, 0),
       legend.text          = ggplot2::element_text(size = 12),
       legend.title         = ggplot2::element_text(size = 12),

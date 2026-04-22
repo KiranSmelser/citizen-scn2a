@@ -11,6 +11,30 @@ source(file.path(".", "R", "config.R"))
 source(file.path(".", "R", "data_import_functions.R"))
 source(file.path(".", "R", "cleaning_utilities.R"))
 
+# Standardize medication names
+standardize_medication_name <- function(x) {
+  x <- as.character(x)
+  x <- str_squish(x)
+  is_acth <- str_detect(x, regex("ACTH", ignore_case = TRUE))
+  x[is_acth %in% TRUE] <- "ACTH"
+  x <- recode(
+    x,
+    `Epidiolex` = "Epidiolex/CBD",
+    `Cannabidiol` = "Epidiolex/CBD",
+    `Briveracetam` = "Brivaracetam",
+    .default = x
+  )
+  x
+}
+
+# Canonical key for medication matching
+medication_match_key <- function(x) {
+  x %>%
+    standardize_medication_name() %>%
+    str_to_lower() %>%
+    str_replace_all("[^a-z0-9]+", "")
+}
+
 # Compute censor ages for patients
 compute_censor_ages <- function(df_duration) {
   df_duration %>%
@@ -65,10 +89,7 @@ clean_medication_data <- function() {
   
   df_med <- df_med %>%
     mutate(
-      medication = ifelse(grepl("ACTH", medication), "ACTH", medication),
-      medication = recode(medication,
-                          `Epidiolex` = "Epidiolex/CBD",
-                          `Cannabidiol` = "Epidiolex/CBD")
+      medication = standardize_medication_name(medication)
     ) %>%
     filter(grepl(MEDS_TO_USE, medication))
   
@@ -212,6 +233,9 @@ timeline_data <- function(df_sz, classifier, censor_ages = NULL) {
   }
   
   genetics         <- read_excel(PATH_CITIZEN_DATA, sheet = "genetic_findings")
+  if (!"protein_variant" %in% names(genetics) && "variant_protein" %in% names(genetics)) {
+    genetics <- genetics %>% mutate(protein_variant = variant_protein)
+  }
   demographics     <- read_excel(PATH_CITIZEN_DATA, sheet = "demographics")
   df_diag          <- read_excel(PATH_CITIZEN_DATA, sheet = "diagnostic_procedures")
   hospitalizations <- read_hospitalizations()
@@ -219,15 +243,7 @@ timeline_data <- function(df_sz, classifier, censor_ages = NULL) {
   df_sz_apts       <- df_sz %>% select(patient_uuid, age_days)
   df_diagnosis_apts<- read_excel(PATH_CITIZEN_DATA, sheet = "clinical_diagnosis") %>%
     select(patient_uuid, clinical_diagnosis_age_days_firstDate)
-  overlap_patients <- read_excel(PATH_OVERLAP_PATIENTS)
-  
   adverse_effects <- read_excel(PATH_CITIZEN_DATA, sheet = "adverse_effects")
-  adverse_effect_severity <- read_excel(PATH_EFFECTS_SEVERITY)
-  adverse_effects <- adverse_effects %>% 
-    inner_join(
-      adverse_effect_severity %>% filter(severity_score %in% c("Moderate", "Severe")), 
-      by = "adverse_effect"
-    )
   
   df_spasms <- df_sz %>% filter(type %in% classifier$spasms) %>% mutate(type = "Infantile Spasms")
   
@@ -291,7 +307,6 @@ timeline_data <- function(df_sz, classifier, censor_ages = NULL) {
     df_med_apts        = df_med_apts,
     df_sz_apts         = df_sz_apts,
     df_diagnosis_apts  = df_diagnosis_apts,
-    overlap_patients   = overlap_patients,
     adverse_effects    = adverse_effects,
     df_spasms          = df_spasms,
     df_spasm_periods   = df_spasm_periods,
@@ -301,9 +316,8 @@ timeline_data <- function(df_sz, classifier, censor_ages = NULL) {
 }
 
 # Prepare per‐patient chart data
-prepare_patient_chart_data <- function(pt, seizures_summary_combined, df_duration, df_type, timeline_data, df_sz, demographics) {
+prepare_patient_chart_data <- function(pt, df_duration, df_type, timeline_data, demographics) {
   genetics         <- timeline_data$genetics
-  overlap_patients <- timeline_data$overlap_patients
   df_med_apts      <- timeline_data$df_med_apts
   df_sz_apts       <- timeline_data$df_sz_apts
   df_diagnosis_apts<- timeline_data$df_diagnosis_apts
@@ -313,21 +327,13 @@ prepare_patient_chart_data <- function(pt, seizures_summary_combined, df_duratio
   df_eeg           <- timeline_data$df_eeg
   df_hyps          <- timeline_data$df_hyps
   
-  protein_mutation <- genetics %>% filter(patient_uuid == pt, gene == "SCN8A") %>% pull(variant_protein) %>% first()
-  if (is.na(protein_mutation)) {
-    protein_mutation <- overlap_patients %>% filter(`Patient ID` == pt) %>% pull(`p.`) %>% first()
-  }
+  protein_mutation <- genetics %>%
+    filter(patient_uuid == pt, toupper(gene) == "SCN2A") %>%
+    pull(protein_variant) %>%
+    first()
   protein_mutation <- ifelse(is.na(protein_mutation), "NA", protein_mutation)
-  
-  patient_reg_num <- overlap_patients %>% filter(`Patient ID` == pt) %>% pull(`Registry #`) %>% first()
-  patient_reg_num <- ifelse(!is.na(patient_reg_num), paste0(" (Registry #", patient_reg_num, ")"), "")
-  
-  has_infantile_spasms <- df_sz %>% filter(patient_uuid == pt, type == "Infantile spasms") %>% nrow() > 0
-  title_suffix <- if (has_infantile_spasms) " - IF" else ""
-  
-  timeline_title <- paste(pt, patient_reg_num, " (", protein_mutation, ")", title_suffix, sep = "")
-  
-  pt_data <- seizures_summary_combined %>% filter(patient_uuid == pt)
+
+  timeline_title <- paste(pt, " (", protein_mutation, ")", sep = "")
   
   pt_data_duration <- df_duration %>% filter(patient_uuid == pt) %>%
     mutate(
@@ -342,9 +348,6 @@ prepare_patient_chart_data <- function(pt, seizures_summary_combined, df_duratio
     .groups = "drop"
   ) %>% arrange(desc(total_duration))
   
-  pt_data <- pt_data %>% left_join(duration_order, by = "medication") %>% 
-    arrange(total_duration) %>% mutate(medication = factor(medication, levels = unique(medication)))
-  
   pt_data_type <- df_type %>% filter(patient_uuid == pt) %>% mutate(age_months = age_days / 30)
   
   appointment_data <- bind_rows(
@@ -355,13 +358,27 @@ prepare_patient_chart_data <- function(pt, seizures_summary_combined, df_duratio
   
   pt_demographics <- demographics %>% filter(patient_uuid == pt) %>% mutate(most_recent_record_age_months = most_recent_records_age_days / 30)
   
-  pt_data_adverse <- adverse_effects %>% filter(patient_uuid == pt) %>% mutate(age_months = adverse_effect_age_days_firstDate / 30)
-  
   pt_data_status <- hospitalizations %>% filter(patient_uuid == pt, admission_diagnosis == "Status epilepticus") %>% mutate(age_months = admission_age_days_firstDate / 30)
   
   pt_data_duration <- pt_data_duration %>% group_by(medication_base) %>% mutate(earliest_start = min(start_med_age_months)) %>% ungroup()
   
   med_order <- pt_data_duration %>% distinct(medication_base, earliest_start) %>% arrange(earliest_start) %>% pull(medication_base)
+
+  med_intervals <- pt_data_duration %>%
+    distinct(medication_base, start_med_age, end_med_age) %>%
+    mutate(medication_match_key = medication_match_key(medication_base))
+
+  pt_data_adverse <- adverse_effects %>%
+    filter(patient_uuid == pt) %>%
+    mutate(
+      age_days = adverse_effect_age_days_firstDate,
+      age_months = adverse_effect_age_days_firstDate / 30,
+      medication_match_key = medication_match_key(medication_procedure)
+    ) %>%
+    inner_join(med_intervals, by = "medication_match_key", relationship = "many-to-many") %>%
+    filter(age_days >= start_med_age, age_days <= end_med_age) %>%
+    select(-age_days, -start_med_age, -end_med_age, -medication_match_key) %>%
+    distinct()
   
   pt_spasm_periods <- df_spasm_periods %>% filter(patient_uuid == pt)
   pt_eeg <- df_eeg %>% filter(patient_uuid == pt)
@@ -369,7 +386,6 @@ prepare_patient_chart_data <- function(pt, seizures_summary_combined, df_duratio
   
   list(
     timeline_title   = timeline_title,
-    pt_data          = pt_data,
     pt_data_duration = pt_data_duration,
     med_order        = med_order,
     pt_data_type     = pt_data_type,

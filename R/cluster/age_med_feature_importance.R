@@ -19,7 +19,7 @@ age_pairs    <- list(c("3yr", "5yr"),
                      c("5yr", "8yr"),
                      c("8yr", "10yr"))
 
-run_suffixes <- c("unknown_excluded", "lof_excluded")
+run_suffix <- "all_patients"
 
 # Helper for elastic‑net model
 run_glmnet <- function(x, y, alpha = 0.5, nfolds = 10) {
@@ -63,23 +63,16 @@ med_presence_all <- imap(
   ~ get_med_presence(.x, df_duration)
 )              
 
-# Per‑group analysis
+# Single-run analysis
 set.seed(123)
 
-for (run_suffix in run_suffixes) {
+med_presence_grp <- med_presence_all
 
-  exclude_vec <- if (run_suffix == "unknown_excluded") UNKNOWN else LOF
+out_dir <- file.path(RESULTS, "clusters", run_suffix, "feature_importance")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  med_presence_grp <- map(
-    med_presence_all,
-    ~ .x %>% filter(!patient_uuid %in% exclude_vec)
-  )
-
-  out_dir <- file.path(RESULTS, "clusters", run_suffix, "feature_importance")
-  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-
-  # Compare adjacent age periods
-  walk(age_pairs, function(tp) {
+# Compare adjacent age periods
+walk(age_pairs, function(tp) {
 
     t1 <- tp[1]; t2 <- tp[2]
     pair_label <- paste0(t1, "_vs_", t2)
@@ -163,5 +156,4 @@ for (run_suffix in run_suffixes) {
 
     message("Completed ", pair_label, " (", run_suffix, ") with ",
             nrow(coef_df), " features")
-  })
-}
+})
