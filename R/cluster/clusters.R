@@ -324,6 +324,10 @@ ggsave(filename = file.path(FIGS, "clusters", run_suffix, paste0("clusters_", la
 }
 
 # Execute clustering runs
+# Generate 1-year clusters as an additional artifact without changing the
+# downstream age labels that depend on the 3/5/8/10-year analysis set.
+produce_clusters(365.25, "1yr", "all_patients")
+
 time_labels <- c("3yr", "5yr", "8yr", "10yr")            
 
 for (i in seq_along(CLUSTER_CUTOFFS)) {
