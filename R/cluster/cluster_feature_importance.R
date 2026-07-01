@@ -10,7 +10,7 @@ suppressPackageStartupMessages({
 
 source(file.path(".", "R", "config.R"))
 
-time_labels <- c("3yr", "5yr", "8yr", "10yr")
+time_labels <- c("1yr", "3yr", "5yr", "8yr", "10yr")
 run_suffix <- "all_patients"
 
 cluster_files <- file.path(DATA_PROCESSED, run_suffix,
@@ -42,7 +42,7 @@ walk2(cluster_files, time_labels, function(csv_path, lbl) {
   df <- read.csv(csv_path, stringsAsFactors = FALSE)
 
   y <- factor(df$cluster)
-  x <- as.matrix(df %>% select(-patient_uuid, -cluster))
+  x <- as.matrix(df %>% select(-patient_uuid, -any_of("subgroup"), -cluster))
 
   # Skip age periods with only one cluster
   if (nlevels(y) < 2) {
@@ -104,7 +104,7 @@ suppressPackageStartupMessages({
 
 # Read and combine
 coef_files <- list.files(path = coef_dir,
-                         pattern = "_coefs\\.csv$",
+                         pattern = "^[0-9]+yr_coefs\\.csv$",
                          full.names = TRUE)
 
 coef_all <- purrr::map_dfr(coef_files, function(f) {
@@ -115,7 +115,7 @@ coef_all <- purrr::map_dfr(coef_files, function(f) {
 
 # Factor time_period
 coef_all <- coef_all %>%
-  mutate(time_period = factor(time_period, levels = c("3yr", "5yr", "8yr", "10yr")))
+  mutate(time_period = factor(time_period, levels = time_labels))
 
 # Order features within each facet
 coef_all <- coef_all %>%

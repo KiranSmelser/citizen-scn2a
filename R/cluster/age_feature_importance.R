@@ -9,8 +9,9 @@ suppressPackageStartupMessages({
 
 source(file.path(".", "R", "config.R"))
 
-time_labels  <- c("3yr", "5yr", "8yr", "10yr")
-age_pairs    <- list(c("3yr", "5yr"),
+time_labels  <- c("1yr", "3yr", "5yr", "8yr", "10yr")
+age_pairs    <- list(c("1yr", "3yr"),
+                     c("3yr", "5yr"),
                      c("5yr", "8yr"),
                      c("8yr", "10yr"))
 run_suffix <- "all_patients"
@@ -64,8 +65,9 @@ walk(age_pairs, function(tp) {
     
     # Harmonize feature columns across the two age‑periods
     ids   <- c("patient_uuid", "cluster")
-    feat1 <- setdiff(colnames(df1), ids)
-    feat2 <- setdiff(colnames(df2), ids)
+    metadata_cols <- c("patient_uuid", "subgroup", "cluster")
+    feat1 <- setdiff(colnames(df1), metadata_cols)
+    feat2 <- setdiff(colnames(df2), metadata_cols)
     feats <- union(feat1, feat2)
     
     # Remove unwanted features

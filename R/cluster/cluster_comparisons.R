@@ -9,7 +9,7 @@ library(forcats)
 
 source(file.path(".", "R", "config.R"))
 
-time_labels   <- c("3yr", "5yr", "8yr", "10yr")
+time_labels   <- c("1yr", "3yr", "5yr", "8yr", "10yr")
 run_suffix <- "all_patients"
 
 cluster_files <- file.path(DATA_PROCESSED, run_suffix,
@@ -69,13 +69,15 @@ alluvial_df <- cluster_all %>%
   drop_na(all_of(time_labels)) %>%
   mutate(across(all_of(time_labels), as.factor))
 
+alluvial_axes <- setNames(
+  rlang::syms(time_labels),
+  paste0("axis", seq_along(time_labels))
+)
+
 p_alluvial <- ggplot(alluvial_df,
-                     aes(axis1 = !!sym(time_labels[1]),
-                         axis2 = !!sym(time_labels[2]),
-                         axis3 = !!sym(time_labels[3]),
-                         axis4 = !!sym(time_labels[4]),
+                     aes(!!!alluvial_axes,
                          y     = 1)) +
-  geom_alluvium(aes(fill = !!sym(time_labels[1])),
+  geom_alluvium(aes(fill = !!sym("3yr")),
                 alpha = 0.7, width = 1 / 12) +
   geom_stratum(width = 1 / 4, fill = "white",
                color = "black", show.legend = FALSE) +

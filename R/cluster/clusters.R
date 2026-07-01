@@ -12,6 +12,15 @@ source(file.path(".", "R", "data_import_functions.R"))
 source(file.path(".", "R", "cleaning_utilities.R"))
 source(file.path(".", "R", "cluster", "functions", "cleaning_functions.R"))
 
+read_subgroup_map <- function() {
+  read.csv(PATH_SUBGROUP_CLASSIFIER,
+           stringsAsFactors = FALSE,
+           fileEncoding = "UTF-8-BOM") %>%
+    rename_with(tolower) %>%
+    select(patient_uuid, subgroup) %>%
+    distinct(patient_uuid, .keep_all = TRUE)
+}
+
 # Single-run wrapper
 produce_clusters <- function(cutoff_days, label, run_suffix = "all_patients") {
   # Make the chosen age cut‑off visible to all downstream filters
@@ -23,6 +32,7 @@ produce_clusters <- function(cutoff_days, label, run_suffix = "all_patients") {
              showWarnings = FALSE)
 
 classifier <- read_classifier()
+subgroup_map <- read_subgroup_map()
 
 
 # Demographic and variant features
@@ -293,7 +303,9 @@ cluster_feature_data <- cluster_data_pre_unscaled %>%
   mutate(
     patient_uuid = cluster_data_final$patient_uuid,
     cluster      = mclust_model$classification
-  )
+  ) %>%
+  left_join(subgroup_map, by = "patient_uuid") %>%
+  relocate(patient_uuid, subgroup, cluster)
 
 write.csv(cluster_feature_data,
           file.path(DATA_PROCESSED, run_suffix, paste0(label, "_clusters.csv")),

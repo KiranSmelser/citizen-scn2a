@@ -12,10 +12,11 @@ suppressPackageStartupMessages({
 source(file.path(".", "R", "config.R"))
 source(file.path(".", "R", "cluster", "functions", "cleaning_functions.R"))
 
-time_labels <- c("3yr", "5yr", "8yr", "10yr")
-names(CLUSTER_CUTOFFS) <- time_labels       
+time_labels <- c("1yr", "3yr", "5yr", "8yr", "10yr")
+cluster_cutoffs <- setNames(c(365.25, CLUSTER_CUTOFFS), time_labels)
 
-age_pairs    <- list(c("3yr", "5yr"),
+age_pairs    <- list(c("1yr", "3yr"),
+                     c("3yr", "5yr"),
                      c("5yr", "8yr"),
                      c("8yr", "10yr"))
 
@@ -59,7 +60,7 @@ df_duration <- clean_medication_data() %>%
   )
 
 med_presence_all <- imap(
-  CLUSTER_CUTOFFS,
+  cluster_cutoffs,
   ~ get_med_presence(.x, df_duration)
 )              
 

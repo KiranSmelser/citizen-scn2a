@@ -12,7 +12,7 @@ suppressPackageStartupMessages({
 source(file.path(".", "R", "config.R"))
 
 run_suffix <- "all_patients"
-time_labels <- c("3yr", "5yr", "8yr", "10yr")
+time_labels <- c("1yr", "3yr", "5yr", "8yr", "10yr")
 
 cluster_files <- setNames(
   file.path(DATA_PROCESSED, run_suffix, paste0(time_labels, "_clusters.csv")),

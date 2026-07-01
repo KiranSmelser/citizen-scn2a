@@ -10,10 +10,17 @@ suppressPackageStartupMessages({
 source(file.path(".", "R", "config.R"))
 source(file.path(".", "R", "data_import_functions.R"))
 
-time_labels <- c("3yr", "5yr", "8yr", "10yr")
-names(CLUSTER_CUTOFFS) <- time_labels
+time_labels <- c("1yr", "3yr", "5yr", "8yr", "10yr")
+cluster_cutoffs <- setNames(c(365.25, CLUSTER_CUTOFFS), time_labels)
 
 run_suffix <- "all_patients"
+
+subgroup_map <- read.csv(PATH_SUBGROUP_CLASSIFIER,
+                         stringsAsFactors = FALSE,
+                         fileEncoding = "UTF-8-BOM") %>%
+  rename_with(tolower) %>%
+  select(patient_uuid, subgroup) %>%
+  distinct(patient_uuid, .keep_all = TRUE)
 
 # Denver skills mapping is intentionally disabled for now.
 # map_path_csv <- file.path(DATA_CLASSIFIERS, "denver_skills_map.csv")
@@ -25,7 +32,13 @@ run_suffix <- "all_patients"
 
 create_development_milestone_df <- function(cluster_df, cutoff_days) {
   cluster_assignments <- cluster_df %>%
-    select(patient_uuid, cluster)
+    select(patient_uuid, any_of("subgroup"), cluster)
+
+  if (!"subgroup" %in% names(cluster_assignments)) {
+    cluster_assignments <- cluster_assignments %>%
+      left_join(subgroup_map, by = "patient_uuid") %>%
+      relocate(subgroup, .after = patient_uuid)
+  }
 
   df_dev <- read_development_data() %>%
     filter(
@@ -47,6 +60,7 @@ create_development_milestone_df <- function(cluster_df, cutoff_days) {
 
   cluster_assignments %>%
     left_join(dev_wide, by = "patient_uuid") %>%
+    relocate(patient_uuid, subgroup, cluster) %>%
     mutate(across(starts_with("dev_"), ~ replace_na(., 0)))
 }
 
@@ -59,7 +73,7 @@ for (lbl in time_labels) {
   }
 
   df_clusters <- read.csv(cluster_csv, stringsAsFactors = FALSE)
-  dev_df <- create_development_milestone_df(df_clusters, CLUSTER_CUTOFFS[[lbl]])
+  dev_df <- create_development_milestone_df(df_clusters, cluster_cutoffs[[lbl]])
 
   out_dir <- file.path(RESULTS, "clusters", run_suffix, "dev")
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
