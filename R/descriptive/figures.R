@@ -21,7 +21,9 @@ df_seizure <- clean_seizure_data(include_spasms = TRUE)
 df_seizure <- df_seizure %>%
   mutate(age_years = age_days / 365)
 
-df_seizure <- df_seizure %>% filter(tolower(type) != "clonic")
+df_seizure <- df_seizure %>%
+  filter(tolower(type) != "clonic") %>%
+  filter(!(type == "Spasms" & age_years > 5))
 
 # Count unique patients per seizure type at each age
 patients_by_type <- df_seizure %>%

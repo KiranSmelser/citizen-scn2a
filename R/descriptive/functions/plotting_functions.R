@@ -231,8 +231,8 @@ plot_medications_over_age <- function(norm_df,
     theme_classic() +
     theme(legend.justification = c(1, 1),
           legend.position = c(1, 1)) +
-    scale_fill_manual(values = color_vals) +
-    scale_color_manual(values = color_vals)
+    scale_fill_manual(values = color_vals, breaks = names(color_vals)) +
+    scale_color_manual(values = color_vals, breaks = names(color_vals))
   return(p)
 }
 

@@ -270,9 +270,9 @@ merge_intervals <- function(intervals_df) {
 # Prepare top medications over age
 prepare_top_medications_over_age <- function(df_med_duration,
                                              top_n = 10,
-                                             desired_levels = c("OXC", "LCM", "CLB", "CLZ",
-                                                                "LEV", "CBD", "TPM", "PBT",
-                                                                "VPA", "GBP")) {
+                                             front_to_back_levels = c("TPM", "PBT", "OXC", "LCM",
+                                                                      "GBP", "VPA", "LEV", "CLB",
+                                                                      "CBD", "CLZ")) {
   df_med_duration <- df_med_duration %>%
     mutate(medication_base = sub(" \\d+$", "", medication))
 
@@ -308,9 +308,9 @@ prepare_top_medications_over_age <- function(df_med_duration,
            medication = recode(medication_base, !!!ABBREVIATIONS_MEDS)) %>%
     select(age_year, medication, prop)
 
-  present_levels <- desired_levels[desired_levels %in% normalized_df$medication]
+  present_levels <- front_to_back_levels[front_to_back_levels %in% normalized_df$medication]
   normalized_df$medication <- factor(normalized_df$medication,
-                                     levels  = present_levels,
+                                     levels  = rev(present_levels),
                                      ordered = TRUE)
 
   return(list(
