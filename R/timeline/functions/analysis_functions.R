@@ -126,3 +126,113 @@ calculate_seizure_index_comparisons <- function(df_type, df_duration, appointmen
   seizures_summary_combined <- bind_rows(seizures_summary_list)
   return(seizures_summary_combined)
 }
+
+# Summarize seizure reports for each patient
+get_seizure_counts <- function(df_table_data) {
+  df_table_data %>%
+    group_by(patient_uuid) %>%
+    summarise(
+      seizure_count        = n(),
+      seizure_burden       = sum(index, na.rm = TRUE),
+      mean_index           = round(mean(index, na.rm = TRUE), 2),
+      number_seizure_types = n_distinct(type),
+      seizure_types        = paste(unique(type), collapse = ", "),
+      .groups = "drop"
+    )
+}
+
+# Find each patient's longest interval without a seizure report. When follow-up
+# data are supplied, the interval from the final seizure to the end of follow-up
+# is considered alongside intervals between seizure reports.
+get_seizure_gaps <- function(df_table_data, appointment_summary = NULL) {
+  required_columns <- c("patient_uuid", "age_in_months")
+  missing_columns <- setdiff(required_columns, names(df_table_data))
+  if (length(missing_columns) > 0) {
+    stop("Missing required seizure-gap columns: ", paste(missing_columns, collapse = ", "))
+  }
+
+  seizure_ages <- df_table_data %>%
+    filter(!is.na(patient_uuid), !is.na(age_in_months), is.finite(age_in_months)) %>%
+    arrange(patient_uuid, age_in_months)
+
+  patient_seizure_summary <- seizure_ages %>%
+    group_by(patient_uuid) %>%
+    summarise(
+      last_age = last(age_in_months),
+      .groups = "drop"
+    )
+
+  internal_gaps <- seizure_ages %>%
+    group_by(patient_uuid) %>%
+    mutate(
+      internal_start = age_in_months,
+      internal_end = lead(age_in_months),
+      internal_gap = internal_end - internal_start
+    ) %>%
+    filter(!is.na(internal_gap)) %>%
+    slice_max(internal_gap, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    select(patient_uuid, internal_gap, internal_start, internal_end)
+
+  gap_df <- patient_seizure_summary %>%
+    left_join(internal_gaps, by = "patient_uuid")
+
+  if (!is.null(appointment_summary)) {
+    required_follow_up_columns <- c("patient_uuid", "last_appointment")
+    missing_follow_up_columns <- setdiff(required_follow_up_columns, names(appointment_summary))
+    if (length(missing_follow_up_columns) > 0) {
+      stop(
+        "Missing required appointment-summary columns: ",
+        paste(missing_follow_up_columns, collapse = ", ")
+      )
+    }
+
+    follow_up <- appointment_summary %>%
+      select(patient_uuid, last_appointment) %>%
+      filter(!is.na(patient_uuid)) %>%
+      group_by(patient_uuid) %>%
+      summarise(last_appointment = max(last_appointment, na.rm = TRUE), .groups = "drop") %>%
+      mutate(last_appointment = if_else(is.finite(last_appointment), last_appointment, NA_real_))
+
+    gap_df <- gap_df %>%
+      left_join(follow_up, by = "patient_uuid") %>%
+      mutate(end_of_followup = coalesce(last_appointment, last_age)) %>%
+      select(-last_appointment)
+  } else {
+    gap_df <- gap_df %>%
+      mutate(end_of_followup = last_age)
+  }
+
+  gap_df %>%
+    mutate(
+      trailing_gap = pmax(end_of_followup - last_age, 0),
+      gap_len = pmax(replace_na(internal_gap, 0), trailing_gap),
+      use_trailing_gap = is.na(internal_gap) | trailing_gap >= internal_gap,
+      start_gap_age = round(if_else(use_trailing_gap, last_age, internal_start), 2),
+      end_gap_age = round(if_else(use_trailing_gap, end_of_followup, internal_end), 2),
+      gap_len = round(gap_len, 2),
+      gap_period = if_else(
+        gap_len > 0,
+        paste0(start_gap_age, " - ", end_gap_age),
+        "No gap"
+      )
+    ) %>%
+    select(patient_uuid, gap_len, start_gap_age, end_gap_age, gap_period)
+}
+
+# Summarize medication types whose recorded intervals overlap a seizure gap
+get_gap_medications <- function(seizure_gaps, seizures_summary) {
+  seizures_summary %>%
+    inner_join(seizure_gaps, by = "patient_uuid") %>%
+    filter(
+      start_med_age / 30 <= end_gap_age,
+      end_med_age / 30 >= start_gap_age
+    ) %>%
+    distinct(patient_uuid, medication) %>%
+    group_by(patient_uuid) %>%
+    summarise(
+      number_med_types_gap = n_distinct(medication),
+      med_types_gap = paste(unique(medication), collapse = ", "),
+      .groups = "drop"
+    )
+}
