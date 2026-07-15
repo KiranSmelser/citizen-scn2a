@@ -465,3 +465,127 @@ plot_appointment_count_boxplot <- function(counts_df) {
       y = "Number of appointments per patient"
     )
 }
+
+# Bar plot of sodium-channel blocker use during the longest seizure gap
+plot_gap_scb_by_variant <- function(
+    summary_df,
+    fill_values = c(
+      "GOF-MS" = "#2F73B9",
+      "Mixed-MS" = "#43A4A6",
+      "LOF-MS" = "#F2B134",
+      "LOF-TR" = "#B11F24",
+      "Unclassified" = "#A7ACB1"
+    ),
+    ylim = c(0, 0.8)) {
+  required_columns <- c(
+    "variant_class", "variant_label", "mean_fraction_scb", "annotation"
+  )
+  missing_columns <- setdiff(required_columns, names(summary_df))
+  if (length(missing_columns) > 0) {
+    stop("Missing required Figure 14 columns: ", paste(missing_columns, collapse = ", "))
+  }
+
+  ggplot2::ggplot(
+    summary_df,
+    ggplot2::aes(x = variant_class, y = mean_fraction_scb, fill = variant_class)
+  ) +
+    ggplot2::geom_col(width = 0.72, show.legend = FALSE) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = annotation),
+      vjust = -0.45,
+      size = 3.2,
+      lineheight = 0.9
+    ) +
+    ggplot2::scale_fill_manual(values = fill_values, drop = FALSE) +
+    ggplot2::scale_x_discrete(labels = stats::setNames(
+      summary_df$variant_label,
+      as.character(summary_df$variant_class)
+    )) +
+    ggplot2::scale_y_continuous(
+      limits = ylim,
+      breaks = seq(ylim[1], ylim[2], by = 0.1),
+      expand = ggplot2::expansion(mult = c(0, 0.02))
+    ) +
+    ggplot2::labs(
+      x = NULL,
+      y = "Mean SCB fraction of ASMs during longest gap"
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 20, hjust = 1, vjust = 1),
+      axis.ticks.x = ggplot2::element_blank()
+    )
+}
+
+# Mirrored counts of ASMs maintained during the longest seizure gap
+plot_gap_medications_by_function <- function(
+    medication_counts,
+    fill_values = c(
+      "LoF_SCB" = "#B5121B",
+      "LoF_Other" = "#E2B0B0",
+      "GoF/Mixed_SCB" = "#2F73B9",
+      "GoF/Mixed_Other" = "#ABC4DB"
+    )) {
+  required_columns <- c(
+    "medication", "medication_label", "signed_count", "fill_group"
+  )
+  missing_columns <- setdiff(required_columns, names(medication_counts))
+  if (length(missing_columns) > 0) {
+    stop("Missing required Figure 15 columns: ", paste(missing_columns, collapse = ", "))
+  }
+
+  max_count <- max(abs(medication_counts$signed_count), na.rm = TRUE)
+  axis_limit <- max(2, ceiling(max_count / 2) * 2)
+  axis_breaks <- seq(-axis_limit, axis_limit, by = 2)
+
+  medication_labels <- medication_counts %>%
+    dplyr::distinct(medication, medication_label) %>%
+    dplyr::arrange(medication)
+  y_limits <- c(levels(medication_counts$medication), "figure_header")
+  y_labels <- c(
+    stats::setNames(medication_labels$medication_label, as.character(medication_labels$medication)),
+    figure_header = ""
+  )
+  header_data <- data.frame(
+    signed_count = c(-0.62 * axis_limit, 0.62 * axis_limit),
+    medication = "figure_header",
+    label = c("LoF", "GoF/Mixed"),
+    color = c("#B5121B", "#2F73B9")
+  )
+
+  ggplot2::ggplot(
+    medication_counts,
+    ggplot2::aes(x = signed_count, y = medication, fill = fill_group)
+  ) +
+    ggplot2::geom_col(width = 0.68, show.legend = FALSE) +
+    ggplot2::geom_vline(xintercept = 0, color = "#777777", linewidth = 0.6) +
+    ggplot2::geom_text(
+      data = header_data,
+      ggplot2::aes(x = signed_count, y = medication, label = label, color = color),
+      inherit.aes = FALSE,
+      fontface = "bold",
+      show.legend = FALSE
+    ) +
+    ggplot2::scale_fill_manual(values = fill_values) +
+    ggplot2::scale_color_identity() +
+    ggplot2::scale_x_continuous(
+      limits = c(-axis_limit - 1, axis_limit + 1),
+      breaks = axis_breaks,
+      labels = abs(axis_breaks),
+      expand = ggplot2::expansion(mult = c(0, 0))
+    ) +
+    ggplot2::scale_y_discrete(
+      limits = y_limits,
+      labels = y_labels,
+      expand = ggplot2::expansion(add = c(0.25, 0.65))
+    ) +
+    ggplot2::labs(
+      x = "\u2190 LoF gaps     Patients with ASM in gap     GoF/Mixed gaps \u2192",
+      y = NULL
+    ) +
+    ggplot2::theme_classic() +
+    ggplot2::theme(
+      axis.line.y = ggplot2::element_blank(),
+      axis.ticks.y = ggplot2::element_blank()
+    )
+}

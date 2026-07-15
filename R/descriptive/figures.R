@@ -215,3 +215,31 @@ ggsave(
   height   = 6,
   dpi      = 600
 )
+
+# Figure 14
+# ---------
+# Sodium-channel blocker fraction during each patient's longest seizure gap
+gap_scb_summary <- prepare_gap_scb_summary()
+p_gap_scb <- plot_gap_scb_by_variant(gap_scb_summary)
+
+ggsave(
+  filename = file.path("output", "figures", "fig_14.jpeg"),
+  plot     = p_gap_scb,
+  width    = 8,
+  height   = 6,
+  dpi      = 600
+)
+
+# Figure 15
+# ---------
+# Medications during the longest seizure gap, split by functional variant group
+gap_medication_counts <- prepare_gap_medication_counts()
+p_gap_medications <- plot_gap_medications_by_function(gap_medication_counts)
+
+ggsave(
+  filename = file.path("output", "figures", "fig_15.jpeg"),
+  plot     = p_gap_medications,
+  width    = 8,
+  height   = 5.5,
+  dpi      = 600
+)

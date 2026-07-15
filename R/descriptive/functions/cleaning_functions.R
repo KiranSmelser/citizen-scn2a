@@ -387,6 +387,197 @@ prepare_medication_category_durations <- function(df_med_duration,
   ))
 }
 
+# Return the abbreviated medications treated as sodium-channel blockers in gap figures
+get_gap_scb_abbreviations <- function(
+    med_classifier = readr::read_csv(PATH_MED_CLASSIFIER, show_col_types = FALSE),
+    scb_exclusions = "Valproate") {
+  if (!("Sodium Channel Blockers" %in% names(med_classifier))) {
+    stop("Medication classifier is missing the 'Sodium Channel Blockers' column")
+  }
+
+  # Valproate has multiple mechanisms and is excluded here to match the
+  # conventional sodium-channel-blocker definition used for Figures 14 and 15.
+  scb_medications <- med_classifier[["Sodium Channel Blockers"]]
+  scb_medications <- stringr::str_trim(as.character(scb_medications))
+  scb_medications <- scb_medications[
+    !is.na(scb_medications) &
+      scb_medications != "" &
+      !(scb_medications %in% scb_exclusions)
+  ]
+
+  unname(dplyr::recode(scb_medications, !!!ABBREVIATIONS_MEDS))
+}
+
+# Summarize sodium-channel blocker use during each patient's longest seizure gap
+prepare_gap_scb_summary <- function(
+    gap_data = readr::read_csv(
+      file.path(RESULTS, "combined_longitudinal_table.csv"),
+      show_col_types = FALSE
+    ),
+    subgroup_data = readr::read_csv(PATH_SUBGROUP_CLASSIFIER, show_col_types = FALSE),
+    med_classifier = readr::read_csv(PATH_MED_CLASSIFIER, show_col_types = FALSE),
+    variant_levels = c("GOF-MS", "Mixed-MS", "LOF-MS", "LOF-TR", "Unclassified"),
+    scb_exclusions = "Valproate") {
+  required_gap_columns <- c("patient_uuid", "med_types_gap")
+  missing_gap_columns <- setdiff(required_gap_columns, names(gap_data))
+  if (length(missing_gap_columns) > 0) {
+    stop("Missing required gap columns: ", paste(missing_gap_columns, collapse = ", "))
+  }
+
+  required_subgroup_columns <- c("patient_uuid", "variant_class")
+  missing_subgroup_columns <- setdiff(required_subgroup_columns, names(subgroup_data))
+  if (length(missing_subgroup_columns) > 0) {
+    stop(
+      "Missing required subgroup columns: ",
+      paste(missing_subgroup_columns, collapse = ", ")
+    )
+  }
+
+  scb_abbreviations <- get_gap_scb_abbreviations(med_classifier, scb_exclusions)
+
+  patient_gap_meds <- gap_data %>%
+    dplyr::select(patient_uuid, med_types_gap) %>%
+    dplyr::filter(
+      !is.na(patient_uuid),
+      !is.na(med_types_gap),
+      med_types_gap != "None",
+      med_types_gap != ""
+    ) %>%
+    tidyr::separate_longer_delim(med_types_gap, delim = ",") %>%
+    dplyr::mutate(medication = stringr::str_trim(med_types_gap)) %>%
+    dplyr::filter(medication != "") %>%
+    dplyr::distinct(patient_uuid, medication) %>%
+    dplyr::group_by(patient_uuid) %>%
+    dplyr::summarise(
+      number_asms_gap = dplyr::n_distinct(medication),
+      number_scb_gap = dplyr::n_distinct(medication[medication %in% scb_abbreviations]),
+      fraction_scb_gap = number_scb_gap / number_asms_gap,
+      any_scb_gap = number_scb_gap > 0,
+      .groups = "drop"
+    )
+
+  patient_gap_meds %>%
+    dplyr::inner_join(
+      subgroup_data %>%
+        dplyr::select(patient_uuid, variant_class) %>%
+        dplyr::distinct(),
+      by = "patient_uuid"
+    ) %>%
+    dplyr::filter(!is.na(variant_class), variant_class %in% variant_levels) %>%
+    dplyr::group_by(variant_class) %>%
+    dplyr::summarise(
+      mean_fraction_scb = mean(fraction_scb_gap),
+      percent_any_scb = 100 * mean(any_scb_gap),
+      n = dplyr::n(),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      variant_class = factor(variant_class, levels = variant_levels, ordered = TRUE),
+      variant_label = paste0(variant_class, "\nn=", n),
+      annotation = paste0(round(percent_any_scb), "%\nany-SCB")
+    ) %>%
+    dplyr::arrange(variant_class)
+}
+
+# Count patients maintained on each ASM during their longest seizure gap
+prepare_gap_medication_counts <- function(
+    gap_data = readr::read_csv(
+      file.path(RESULTS, "combined_longitudinal_table.csv"),
+      show_col_types = FALSE
+    ),
+    subgroup_data = readr::read_csv(PATH_SUBGROUP_CLASSIFIER, show_col_types = FALSE),
+    med_classifier = readr::read_csv(PATH_MED_CLASSIFIER, show_col_types = FALSE),
+    scb_exclusions = "Valproate",
+    min_group_count = 3,
+    medication_order = c(
+      "GBP", "VBG", "TPM", "CBD", "CLZ", "CLB", "VPA", "LEV",
+      "CBZ", "PHT", "LCM", "LTG", "OXC"
+    )) {
+  required_gap_columns <- c("patient_uuid", "med_types_gap")
+  missing_gap_columns <- setdiff(required_gap_columns, names(gap_data))
+  if (length(missing_gap_columns) > 0) {
+    stop("Missing required gap columns: ", paste(missing_gap_columns, collapse = ", "))
+  }
+
+  required_subgroup_columns <- c("patient_uuid", "variant_class")
+  missing_subgroup_columns <- setdiff(required_subgroup_columns, names(subgroup_data))
+  if (length(missing_subgroup_columns) > 0) {
+    stop(
+      "Missing required subgroup columns: ",
+      paste(missing_subgroup_columns, collapse = ", ")
+    )
+  }
+
+  scb_abbreviations <- get_gap_scb_abbreviations(med_classifier, scb_exclusions)
+
+  medication_counts <- gap_data %>%
+    dplyr::select(patient_uuid, med_types_gap) %>%
+    dplyr::filter(
+      !is.na(patient_uuid),
+      !is.na(med_types_gap),
+      med_types_gap != "None",
+      med_types_gap != ""
+    ) %>%
+    tidyr::separate_longer_delim(med_types_gap, delim = ",") %>%
+    dplyr::mutate(medication = stringr::str_trim(med_types_gap)) %>%
+    dplyr::filter(medication != "") %>%
+    dplyr::distinct(patient_uuid, medication) %>%
+    dplyr::inner_join(
+      subgroup_data %>%
+        dplyr::select(patient_uuid, variant_class) %>%
+        dplyr::distinct(),
+      by = "patient_uuid"
+    ) %>%
+    dplyr::mutate(
+      variant_group = dplyr::case_when(
+        variant_class %in% c("LOF-MS", "LOF-TR") ~ "LoF",
+        variant_class %in% c("GOF-MS", "Mixed-MS") ~ "GoF/Mixed",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    dplyr::filter(!is.na(variant_group)) %>%
+    dplyr::count(medication, variant_group, name = "patient_count") %>%
+    tidyr::complete(
+      medication,
+      variant_group = c("LoF", "GoF/Mixed"),
+      fill = list(patient_count = 0L)
+    )
+
+  included_medications <- medication_counts %>%
+    dplyr::group_by(medication) %>%
+    dplyr::summarise(
+      max_group_count = max(patient_count),
+      total_count = sum(patient_count),
+      .groups = "drop"
+    ) %>%
+    # Retain commonly used agents plus SCBs represented in at least two patients.
+    dplyr::filter(
+      max_group_count >= min_group_count |
+        (medication %in% scb_abbreviations & total_count >= 2)
+    ) %>%
+    dplyr::pull(medication)
+
+  display_order <- c(
+    medication_order[medication_order %in% included_medications],
+    sort(setdiff(included_medications, medication_order))
+  )
+
+  medication_counts %>%
+    dplyr::filter(medication %in% included_medications) %>%
+    dplyr::mutate(
+      is_scb = medication %in% scb_abbreviations,
+      signed_count = dplyr::if_else(
+        variant_group == "LoF",
+        -as.numeric(patient_count),
+        as.numeric(patient_count)
+      ),
+      medication = factor(medication, levels = rev(display_order), ordered = TRUE),
+      medication_label = paste0(as.character(medication), dplyr::if_else(is_scb, " *", "")),
+      fill_group = paste(variant_group, dplyr::if_else(is_scb, "SCB", "Other"), sep = "_")
+    ) %>%
+    dplyr::arrange(medication, variant_group)
+}
+
 # Build med x adverse effect Fisher tests (for Figure 6)
 build_med_ae_fisher <- function() {
   # Read and clean medication data
