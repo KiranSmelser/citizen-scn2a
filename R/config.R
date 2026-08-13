@@ -45,6 +45,13 @@ AGE_CUTOFF_DAYS <- 1095
 # Cluster age cutoffs (days)
 CLUSTER_CUTOFFS <- c(1095, 1826.25, 2922, 3652.5)
 
+# Epilepsia-friendly cluster palette shared by PCA and alluvial figures
+CLUSTER_COLORS <- c(
+  "1" = "#0067B9",
+  "2" = "#D06012",
+  "3" = "#005B56"
+)
+
 # Medication names
 MEDS_TO_USE <- paste(
   c("Adrenocorticotropin (ACTH 1-18),I-125 (TYR)", "ACTH", "Clonazepam", "Levetiracetam", 

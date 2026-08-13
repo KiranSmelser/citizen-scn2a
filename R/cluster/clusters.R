@@ -324,6 +324,7 @@ pca_df <- data.frame(pca_res$x[, 1:2]) %>%
 # Plot the first two PCs 
 p <- ggplot(pca_df, aes(x = PC1, y = PC2, color = cluster)) +
   geom_point(size = 2, alpha = 0.8) +
+  scale_color_manual(values = CLUSTER_COLORS) +
   labs(title = paste(label, "Patient Clusters"),
        x = "PC1",
        y = "PC2",

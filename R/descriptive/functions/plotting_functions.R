@@ -17,7 +17,19 @@ source(file.path(".", "R", "config.R"))
 source(file.path(".", "R", "data_import_functions.R"))
 
 # Constants
-MED_COLORS <- RColorBrewer::brewer.pal(10, "Set3")
+# Epilepsia-friendly qualitative palette for the ten medication series.
+MED_COLORS <- c(
+  "#005B56", # green-blue
+  "#E5B700", # yellow
+  "#0067B9", # blue
+  "#9E1B4D", # red
+  "#70A9D1", # light blue
+  "#D06012", # orange
+  "#6F7622", # olive green
+  "#D59AB1", # rose
+  "#7A7A7A", # neutral gray
+  "#76528B"  # violet
+)
 SEIZURE_TYPE_COLORS <- c("#67771a", "#5698a3", "#ffde76", "#0076c0", "#e37c1d", "#7a5072")
 
 HOSPITAL_LINE_COLORS <- c("Seizure" = "#a30234", 

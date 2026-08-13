@@ -1,13 +1,13 @@
 ﻿patient_uuid,subgroup,variant_class
 129991b4-c5a9-40c8-9212-9b9b09348f4c,ASD-EEG*,Unclassified
-21b84450-5ef9-4cfb-a625-623d8fa8ecf3,ASD-EEG*,LOF-TR
+21b84450-5ef9-4cfb-a625-623d8fa8ecf3,LO-C,LOF-TR
 3da7be19-eb6f-4dce-bbe6-0633a413035d,ASD-EEG*,LOF-MS
 4d829e6f-165a-49de-af3b-dc22d746d9e4,ASD-EEG*,Unclassified
 56a0d051-f6c8-46c7-952a-17083555a011,ASD-EEG*,Unclassified
 94490047-be40-4f41-9e56-5dce00965e65,ASD-EEG*,LOF-TR
 97cf9bcd-54c1-43c4-ad10-233b62c146b7,ASD-EEG*,LOF-MS
 b3d119ea-98cb-435d-8479-1eb43bb9b28e,ASD-EEG*,LOF-TR
-e48489db-5e02-4f25-b86e-4ef84d9a3e29,ASD-EEG*,Unclassified
+e48489db-5e02-4f25-b86e-4ef84d9a3e29,LO-MI,Unclassified
 4e0f59c4-757a-44fb-a092-51669a2b8fd3,BFNIE,GOF-MS
 dc9acdff-9b86-45f9-bedd-bc35a8aeb937,BFNIE,GOF-MS
 1643d051-7984-4d01-8ae9-e2e30c5404e6,EO-DEE,Unclassified
@@ -56,7 +56,7 @@ f9b6a951-1d9f-42a5-9a67-71c1cace7882,LO-C,LOF-TR
 330debe6-4c07-46b9-97a6-8bec5d444d3b,LO-MI,Unclassified
 33b55e3b-4076-4f51-9cb9-3503e674d048,IS,LOF-MS
 38a88fac-ca53-407c-b2b7-824fef98ad3d,LO-MI,LOF-TR
-39b67abf-b451-4f23-9e7d-e61e2349bb53,Is,LOF-MS
+39b67abf-b451-4f23-9e7d-e61e2349bb53,IS,LOF-MS
 40a01df4-44d8-430d-b0c5-c9feca715333,LO-MI,Unclassified
 588c1886-bb4c-420e-a08f-5b7f5af507f5,LO-MI,Unclassified
 615bd71a-937b-4490-81f1-f6f6d875fbfa,IS,LOF-MS
