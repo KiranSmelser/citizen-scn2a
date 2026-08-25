@@ -30,7 +30,7 @@ PATH_HOSPITALIZATION_CLASSIFIER <- file.path(DATA_CLASSIFIERS, "Grouping Hospita
 PATH_EFFECTS_SEVERITY <- file.path(DATA_CLASSIFIERS, "effects_severity.xlsx")
 PATH_INITIAL_CLASSIFIER <- file.path(DATA_CLASSIFIERS, "initial_seizure_types_classifier.xlsx")
 PATH_MED_CLASSIFIER <- file.path(DATA_CLASSIFIERS, "med_categories.csv")
-PATH_SUBGROUP_CLASSIFIER <- file.path(DATA_CLASSIFIERS, "subgroups.csv")
+PATH_SUBGROUP_CLASSIFIER <- file.path(DATA_CLASSIFIERS, "subgroups_v2.csv")
 
 # Additional index files
 PATH_TC_INDEX <- file.path(DATA_RAW, "tonic-clonic_index.xlsx")

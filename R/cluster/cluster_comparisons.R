@@ -51,7 +51,7 @@ subgroup_map <- read.csv(PATH_SUBGROUP_CLASSIFIER, stringsAsFactors = FALSE) %>%
   select(patient_uuid, subgroup)
 
 subgroup_order_levels <- c(
-  "EO-DEE", "IS", "BFNIE", "LO-MI", "LO-C", "ID/ASDwoE", "ASD-EEG*"
+  "EO-DEE", "IS", "BFNIE", "LO-MI", "LO-C", "ASD/ID", "ASD-EEG*"
 )
 cluster_bar_width <- 1 / 16
 subgroup_colors <- c(
@@ -62,7 +62,7 @@ subgroup_colors <- c(
   "BFNIE" = "#0067B9",
   "LO-MI" = "#E5B700",
   "LO-C" = "#9E1B4D",
-  "ID/ASDwoE" = "#6F7622",
+  "ASD/ID" = "#6F7622",
   "ASD-EEG*" = "#76528B"
 )
 

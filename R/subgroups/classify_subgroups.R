@@ -55,9 +55,10 @@ is_infantile_spasm <- function(seizure_type) {
   )
 }
 
-classify_subgroup <- function(has_epilepsy, onset_days, seizures_resolved,
-                              has_epileptiform_eeg) {
+classify_subgroup <- function(has_infantile_spasms, has_epilepsy, onset_days,
+                              seizures_resolved, has_epileptiform_eeg) {
   case_when(
+    has_infantile_spasms ~ "IS",
     has_epilepsy & is.na(onset_days) ~ NA_character_,
     has_epilepsy & onset_days < 30 & seizures_resolved ~ "BFNIE",
     has_epilepsy & onset_days < 30 ~ "EO-DEE",
@@ -107,7 +108,7 @@ build_subgroups <- function(demographics, seizure_history, clinical_diagnosis,
     group_by(patient_uuid) %>%
     summarise(
       has_epilepsy = any(epilepsy_record, na.rm = TRUE),
-      IS = as.integer(any(infantile_spasm, na.rm = TRUE)),
+      has_infantile_spasms = any(infantile_spasm, na.rm = TRUE),
       onset_days = if (any(epilepsy_record & !is.na(onset_days))) {
         min(onset_days[epilepsy_record], na.rm = TRUE)
       } else {
@@ -150,17 +151,18 @@ build_subgroups <- function(demographics, seizure_history, clinical_diagnosis,
     left_join(eeg_summary, by = "patient_uuid") %>%
     mutate(
       has_epilepsy = coalesce(has_epilepsy, FALSE),
-      IS = coalesce(IS, 0L),
+      has_infantile_spasms = coalesce(has_infantile_spasms, FALSE),
       seizures_resolved = coalesce(seizures_resolved, FALSE),
       has_epileptiform_eeg = coalesce(has_epileptiform_eeg, FALSE),
       subgroup = classify_subgroup(
+        has_infantile_spasms,
         has_epilepsy,
         onset_days,
         seizures_resolved,
         has_epileptiform_eeg
       )
     ) %>%
-    select(patient_uuid, subgroup, IS) %>%
+    select(patient_uuid, subgroup) %>%
     arrange(patient_uuid)
 }
 
